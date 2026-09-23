@@ -31,7 +31,7 @@ public class MainActivity extends Activity {
  GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
  TextView label(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setGravity(Gravity.CENTER);t.setFontFeatureSettings("kern");return t;}
  void buzz(){try{Vibrator v=(Vibrator)getSystemService(VIBRATOR_SERVICE);if(v!=null&&v.hasVibrator())v.vibrate(VibrationEffect.createOneShot(12,45));}catch(Exception ignored){}}
- @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(0xff090e15);getWindow().setNavigationBarColor(0xff090e15);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR==0?0:0);loadContacts();draw();}
+ @Override public void onCreate(Bundle b){super.onCreate(b);if(checkSelfPermission(Manifest.permission.CALL_PHONE)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.CALL_PHONE},24);getWindow().setStatusBarColor(0xff090e15);getWindow().setNavigationBarColor(0xff090e15);getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR==0?0:0);loadContacts();draw();}
  void loadContacts(){
   people.clear();if(checkSelfPermission(Manifest.permission.READ_CONTACTS)!=PackageManager.PERMISSION_GRANTED)return;
   try(Cursor c=getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
