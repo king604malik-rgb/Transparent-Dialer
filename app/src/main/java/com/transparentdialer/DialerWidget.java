@@ -6,6 +6,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.provider.ContactsContract;
 import android.widget.RemoteViews;
 public class DialerWidget extends AppWidgetProvider {
  static final String ACTION="com.transparentdialer.KEY", EXTRA_KEY="key", EXTRA_ID="widget";
@@ -21,6 +25,21 @@ public class DialerWidget extends AppWidgetProvider {
    PendingIntent pi=PendingIntent.getBroadcast(c,id*100+i,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
    v.setOnClickPendingIntent(KEYS[i],pi);
   }
+  int[] favIds={R.id.fav1,R.id.fav2,R.id.fav3};
+  if(c.checkSelfPermission(Manifest.permission.READ_CONTACTS)==PackageManager.PERMISSION_GRANTED){
+   try(Cursor cur=c.getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+    new String[]{ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER},
+    ContactsContract.CommonDataKinds.Phone.STARRED+"=1",null,ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" COLLATE NOCASE ASC")){
+    int pos=0;java.util.HashSet<String> seen=new java.util.HashSet<>();
+    if(cur!=null)while(cur.moveToNext()&&pos<3){
+     String name=cur.getString(0),phone=cur.getString(1);if(phone==null||!seen.add(phone))continue;
+     v.setTextViewText(favIds[pos],name==null?"FAV":name.split(" ")[0]);
+     Intent dial=new Intent(c,DialerWidget.class).setAction(ACTION).putExtra(EXTRA_ID,id).putExtra(EXTRA_KEY,"FAV:"+phone);
+     v.setOnClickPendingIntent(favIds[pos],PendingIntent.getBroadcast(c,id*100+30+pos,dial,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE));pos++;
+    }
+    for(;pos<3;pos++){v.setTextViewText(favIds[pos],"·");}
+   }catch(Exception ignored){}
+  }else{for(int fav:favIds)v.setTextViewText(fav,"·");}
   m.updateAppWidget(id,v);
  }
  @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids){for(int id:ids)render(c,m,id);}
@@ -30,9 +49,10 @@ public class DialerWidget extends AppWidgetProvider {
   int id=intent.getIntExtra(EXTRA_ID,-1);if(id<0)return;
   String key=intent.getStringExtra(EXTRA_KEY);if(key==null)return;
   String n=prefs(c).getString("n"+id,"");
+  if(key.startsWith("FAV:")){try{Intent d=new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(key.substring(4)," +#*")));d.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);c.startActivity(d);}catch(Exception ignored){}return;}
   if("CALL".equals(key)||"CONTACTS".equals(key)){
    Intent open;
-   if("CONTACTS".equals(key))open=new Intent(Intent.ACTION_VIEW,android.provider.ContactsContract.Contacts.CONTENT_URI);
+   if("CONTACTS".equals(key))open=new Intent(c,MainActivity.class);
    else open=n.isEmpty()?new Intent(Intent.ACTION_DIAL):new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(n,"+#*")));
    open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
    try{c.startActivity(open);}catch(Exception ignored){}
