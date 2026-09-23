@@ -15,6 +15,13 @@ public class DialerWidget extends AppWidgetProvider {
  static final String ACTION="com.transparentdialer.KEY", EXTRA_KEY="key", EXTRA_ID="widget";
  static final int[] KEYS={R.id.k1,R.id.k2,R.id.k3,R.id.k4,R.id.k5,R.id.k6,R.id.k7,R.id.k8,R.id.k9,R.id.star,R.id.k0,R.id.hash,R.id.clear,R.id.call,R.id.delete,R.id.contacts};
  static final String[] VALUES={"1","2","3","4","5","6","7","8","9","*","0","#","CLEAR","CALL","DEL","CONTACTS"};
+ static void placeCall(Context c,String phone){
+  if(phone==null||phone.trim().isEmpty())return;
+  String uri="tel:"+Uri.encode(phone,"+#*");
+  Intent call=new Intent(c.checkSelfPermission(Manifest.permission.CALL_PHONE)==PackageManager.PERMISSION_GRANTED?Intent.ACTION_CALL:Intent.ACTION_DIAL,Uri.parse(uri));
+  call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+  try{c.startActivity(call);}catch(SecurityException denied){try{Intent fallback=new Intent(Intent.ACTION_DIAL,Uri.parse(uri));fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);c.startActivity(fallback);}catch(Exception ignored){}}catch(Exception ignored){}
+ }
  static String t9(String name){String abc="ABCDEFGHIJKLMNOPQRSTUVWXYZ",map="22233344455566677778889999";StringBuilder out=new StringBuilder();for(char ch:name.toUpperCase(java.util.Locale.ROOT).toCharArray()){int i=abc.indexOf(ch);if(i>=0)out.append(map.charAt(i));}return out.toString();}
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("dialer",Context.MODE_PRIVATE);}
  static void render(Context c,AppWidgetManager m,int id){
@@ -67,11 +74,12 @@ public class DialerWidget extends AppWidgetProvider {
   int id=intent.getIntExtra(EXTRA_ID,-1);if(id<0)return;
   String key=intent.getStringExtra(EXTRA_KEY);if(key==null)return;
   String n=prefs(c).getString("n"+id,"");
-  if(key.startsWith("FAV:")){try{Intent d=new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(key.substring(4),"+#*")));d.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);c.startActivity(d);}catch(Exception ignored){}return;}
+  if(key.startsWith("FAV:")){placeCall(c,key.substring(4));return;}
   if("CALL".equals(key)||"CONTACTS".equals(key)){
    Intent open;
-   if("CONTACTS".equals(key))open=new Intent(c,MainActivity.class);
-   else open=n.isEmpty()?new Intent(Intent.ACTION_DIAL):new Intent(Intent.ACTION_DIAL,Uri.parse("tel:"+Uri.encode(n,"+#*")));
+   if("CONTACTS".equals(key))open=new Intent(Intent.ACTION_VIEW,ContactsContract.Contacts.CONTENT_URI);
+   else if(!n.isEmpty()){placeCall(c,n);return;}
+   else open=new Intent(Intent.ACTION_DIAL);
    open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
    try{c.startActivity(open);}catch(Exception ignored){}
    return;
