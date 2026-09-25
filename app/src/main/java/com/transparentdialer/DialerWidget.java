@@ -22,12 +22,28 @@ public class DialerWidget extends AppWidgetProvider {
   call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
   try{c.startActivity(call);}catch(SecurityException denied){try{Intent fallback=new Intent(Intent.ACTION_DIAL,Uri.parse(uri));fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);c.startActivity(fallback);}catch(Exception ignored){}}catch(Exception ignored){}
  }
+ static String formatNumber(String raw){
+  if(raw==null||raw.isEmpty())return "";
+  if(raw.indexOf('*')>=0||raw.indexOf('#')>=0)return raw;
+  boolean plus=raw.startsWith("+");
+  String d=raw.replaceAll("[^0-9]","");
+  // North American numbers: 604 -> 604, 604555 -> 604-555, 6045556565 -> (604) 555-6565.
+  if(d.length()<=3)return (plus?"+":"")+d;
+  if(d.length()<=6)return (plus?"+":"")+d.substring(0,3)+"-"+d.substring(3);
+  if(d.length()<=10)return (plus?"+":"")+"("+d.substring(0,3)+") "+d.substring(3,6)+"-"+d.substring(6);
+  // +1 / 1 followed by a 10-digit NANP number.
+  if(d.length()==11&&d.charAt(0)=='1')return (plus?"+":"")+"1 ("+d.substring(1,4)+") "+d.substring(4,7)+"-"+d.substring(7);
+  // Keep longer/international numbers readable without changing the digits used to call.
+  StringBuilder out=new StringBuilder(plus?"+":"");int first=d.length()%3;if(first==0)first=3;
+  out.append(d.substring(0,first));for(int i=first;i<d.length();i+=3)out.append(' ').append(d.substring(i,Math.min(i+3,d.length())));
+  return out.toString();
+ }
  static String t9(String name){String abc="ABCDEFGHIJKLMNOPQRSTUVWXYZ",map="22233344455566677778889999";StringBuilder out=new StringBuilder();for(char ch:name.toUpperCase(java.util.Locale.ROOT).toCharArray()){int i=abc.indexOf(ch);if(i>=0)out.append(map.charAt(i));}return out.toString();}
  static SharedPreferences prefs(Context c){return c.getSharedPreferences("dialer",Context.MODE_PRIVATE);}
  static void render(Context c,AppWidgetManager m,int id){
   RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.widget);
   String number=prefs(c).getString("n"+id,"");
-  v.setTextViewText(R.id.display,number.isEmpty()?" ":number);
+  v.setTextViewText(R.id.display,number.isEmpty()?" ":formatNumber(number));
   for(int i=0;i<KEYS.length;i++){
    Intent intent=new Intent(c,DialerWidget.class).setAction(ACTION).putExtra(EXTRA_ID,id).putExtra(EXTRA_KEY,VALUES[i]);
    PendingIntent pi=PendingIntent.getBroadcast(c,id*100+i,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
