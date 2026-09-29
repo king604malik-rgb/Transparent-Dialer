@@ -3,6 +3,9 @@ import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.view.View;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -13,8 +16,8 @@ import android.provider.ContactsContract;
 import android.widget.RemoteViews;
 public class DialerWidget extends AppWidgetProvider {
  static final String ACTION="com.transparentdialer.KEY", EXTRA_KEY="key", EXTRA_ID="widget";
- static final int[] KEYS={R.id.k1,R.id.k2,R.id.k3,R.id.k4,R.id.k5,R.id.k6,R.id.k7,R.id.k8,R.id.k9,R.id.star,R.id.k0,R.id.hash,R.id.clear,R.id.call,R.id.delete,R.id.contacts};
- static final String[] VALUES={"1","2","3","4","5","6","7","8","9","*","0","#","CLEAR","CALL","DEL","CONTACTS"};
+ static final int[] KEYS={R.id.k1,R.id.k2,R.id.k3,R.id.k4,R.id.k5,R.id.k6,R.id.k7,R.id.k8,R.id.k9,R.id.star,R.id.k0,R.id.hash,R.id.clear,R.id.call,R.id.delete,R.id.contacts,R.id.display,R.id.add_contact,R.id.copy};
+ static final String[] VALUES={"1","2","3","4","5","6","7","8","9","*","0","#","CLEAR","CALL","DEL","CONTACTS","SHOW_COPY","ADD","COPY"};
  static void placeCall(Context c,String phone){
   if(phone==null||phone.trim().isEmpty())return;
   String uri="tel:"+Uri.encode(phone,"+#*");
@@ -44,6 +47,7 @@ public class DialerWidget extends AppWidgetProvider {
   RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.widget);
   String number=prefs(c).getString("n"+id,"");
   v.setTextViewText(R.id.display,number.isEmpty()?" ":formatNumber(number));
+  v.setViewVisibility(R.id.copy,!number.isEmpty()&&prefs(c).getBoolean("copy"+id,false)?View.VISIBLE:View.GONE);
   for(int i=0;i<KEYS.length;i++){
    Intent intent=new Intent(c,DialerWidget.class).setAction(ACTION).putExtra(EXTRA_ID,id).putExtra(EXTRA_KEY,VALUES[i]);
    PendingIntent pi=PendingIntent.getBroadcast(c,id*100+i,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
@@ -84,13 +88,16 @@ public class DialerWidget extends AppWidgetProvider {
   m.updateAppWidget(id,v);
  }
  @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids){for(int id:ids)render(c,m,id);}
- @Override public void onDeleted(Context c,int[] ids){SharedPreferences.Editor e=prefs(c).edit();for(int id:ids)e.remove("n"+id);e.apply();}
+ @Override public void onDeleted(Context c,int[] ids){SharedPreferences.Editor e=prefs(c).edit();for(int id:ids)e.remove("n"+id).remove("copy"+id);e.apply();}
  @Override public void onReceive(Context c,Intent intent){
   super.onReceive(c,intent);if(!ACTION.equals(intent.getAction()))return;
   int id=intent.getIntExtra(EXTRA_ID,-1);if(id<0)return;
   String key=intent.getStringExtra(EXTRA_KEY);if(key==null)return;
   String n=prefs(c).getString("n"+id,"");
   if(key.startsWith("FAV:")){placeCall(c,key.substring(4));return;}
+  if("SHOW_COPY".equals(key)){prefs(c).edit().putBoolean("copy"+id,!prefs(c).getBoolean("copy"+id,false)).apply();render(c,AppWidgetManager.getInstance(c),id);return;}
+  if("COPY".equals(key)){if(!n.isEmpty()){ClipboardManager clipboard=(ClipboardManager)c.getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard!=null)clipboard.setPrimaryClip(ClipData.newPlainText("Phone number",n));}prefs(c).edit().putBoolean("copy"+id,false).apply();render(c,AppWidgetManager.getInstance(c),id);return;}
+  if("ADD".equals(key)){Intent add=new Intent(Intent.ACTION_INSERT,ContactsContract.Contacts.CONTENT_URI);add.putExtra(ContactsContract.Intents.Insert.PHONE,n);add.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{c.startActivity(add);}catch(Exception ignored){}return;}
   if("CALL".equals(key)||"CONTACTS".equals(key)){
    Intent open;
    if("CONTACTS".equals(key))open=new Intent(Intent.ACTION_VIEW,ContactsContract.Contacts.CONTENT_URI);
@@ -103,6 +110,6 @@ public class DialerWidget extends AppWidgetProvider {
   if("CLEAR".equals(key))n="";
   else if("DEL".equals(key)){if(!n.isEmpty())n=n.substring(0,n.length()-1);}
   else if(n.length()<32)n+=key;
-  prefs(c).edit().putString("n"+id,n).apply();render(c,AppWidgetManager.getInstance(c),id);
+  prefs(c).edit().putString("n"+id,n).putBoolean("copy"+id,false).apply();render(c,AppWidgetManager.getInstance(c),id);
  }
 }
