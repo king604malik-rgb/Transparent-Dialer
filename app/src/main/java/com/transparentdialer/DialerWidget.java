@@ -6,6 +6,13 @@ import android.content.Context;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.view.View;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.BitmapShader;
+import android.graphics.Shader;
+import java.io.InputStream;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -16,14 +23,24 @@ import android.provider.ContactsContract;
 import android.widget.RemoteViews;
 public class DialerWidget extends AppWidgetProvider {
  static final String ACTION="com.transparentdialer.KEY", EXTRA_KEY="key", EXTRA_ID="widget";
- static final int[] KEYS={R.id.k1,R.id.k2,R.id.k3,R.id.k4,R.id.k5,R.id.k6,R.id.k7,R.id.k8,R.id.k9,R.id.star,R.id.k0,R.id.hash,R.id.clear,R.id.call,R.id.delete,R.id.contacts,R.id.display,R.id.add_contact,R.id.copy};
- static final String[] VALUES={"1","2","3","4","5","6","7","8","9","*","0","#","CLEAR","CALL","DEL","CONTACTS","SHOW_COPY","ADD","COPY"};
+ static final int[] KEYS={R.id.k1,R.id.k2,R.id.k3,R.id.k4,R.id.k5,R.id.k6,R.id.k7,R.id.k8,R.id.k9,R.id.star,R.id.k0,R.id.hash,R.id.clear,R.id.call,R.id.delete,R.id.contacts,R.id.display,R.id.add_contact};
+ static final String[] VALUES={"1","2","3","4","5","6","7","8","9","*","0","#","CLEAR","CALL","DEL","CONTACTS","COPY","ADD"};
  static void placeCall(Context c,String phone){
   if(phone==null||phone.trim().isEmpty())return;
   String uri="tel:"+Uri.encode(phone,"+#*");
   Intent call=new Intent(c.checkSelfPermission(Manifest.permission.CALL_PHONE)==PackageManager.PERMISSION_GRANTED?Intent.ACTION_CALL:Intent.ACTION_DIAL,Uri.parse(uri));
   call.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
   try{c.startActivity(call);}catch(SecurityException denied){try{Intent fallback=new Intent(Intent.ACTION_DIAL,Uri.parse(uri));fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);c.startActivity(fallback);}catch(Exception ignored){}}catch(Exception ignored){}
+ }
+ static Bitmap roundPhoto(Bitmap source){
+  int size=96;
+  Bitmap scaled=Bitmap.createScaledBitmap(source,size,size,true);
+  Bitmap result=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888);
+  Canvas canvas=new Canvas(result);
+  Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+  paint.setShader(new BitmapShader(scaled,Shader.TileMode.CLAMP,Shader.TileMode.CLAMP));
+  canvas.drawCircle(size/2f,size/2f,size/2f,paint);
+  return result;
  }
  static String formatNumber(String raw){
   if(raw==null||raw.isEmpty())return "";
@@ -47,24 +64,37 @@ public class DialerWidget extends AppWidgetProvider {
   RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.widget);
   String number=prefs(c).getString("n"+id,"");
   v.setTextViewText(R.id.display,number.isEmpty()?" ":formatNumber(number));
-  v.setViewVisibility(R.id.copy,!number.isEmpty()&&prefs(c).getBoolean("copy"+id,false)?View.VISIBLE:View.GONE);
+
   for(int i=0;i<KEYS.length;i++){
    Intent intent=new Intent(c,DialerWidget.class).setAction(ACTION).putExtra(EXTRA_ID,id).putExtra(EXTRA_KEY,VALUES[i]);
    PendingIntent pi=PendingIntent.getBroadcast(c,id*100+i,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
    v.setOnClickPendingIntent(KEYS[i],pi);
   }
   v.setTextViewText(R.id.match,"S I G N A T U R E");
+  v.setTextViewTextSize(R.id.match,android.util.TypedValue.COMPLEX_UNIT_SP,9);
+  v.setViewVisibility(R.id.match_hint,View.GONE);
+  v.setViewVisibility(R.id.match_photo,View.GONE);
   if(!number.isEmpty()&&c.checkSelfPermission(Manifest.permission.READ_CONTACTS)==PackageManager.PERMISSION_GRANTED){
    String query=number.replaceAll("[^0-9]","");
    if(!query.isEmpty())try(Cursor found=c.getContentResolver().query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-    new String[]{ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER},null,null,ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" COLLATE NOCASE ASC")){
+    new String[]{ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,ContactsContract.CommonDataKinds.Phone.NUMBER,ContactsContract.CommonDataKinds.Phone.CONTACT_ID},null,null,ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME+" COLLATE NOCASE ASC")){
     if(found!=null)while(found.moveToNext()){
      String name=found.getString(0),phone=found.getString(1);
      if(name==null||phone==null)continue;
      if(phone.replaceAll("[^0-9]","").contains(query)||t9(name).contains(query)){
-      v.setTextViewText(R.id.match,name+"  ·  TAP TO CALL");
+      v.setTextViewText(R.id.match,name);
+      v.setTextViewTextSize(R.id.match,android.util.TypedValue.COMPLEX_UNIT_SP,16);
+      v.setViewVisibility(R.id.match_hint,View.VISIBLE);
+      long contactId=found.getLong(2);
+      try(InputStream stream=ContactsContract.Contacts.openContactPhotoInputStream(c.getContentResolver(),android.content.ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI,contactId),true)){
+       Bitmap bitmap=stream==null?null:BitmapFactory.decodeStream(stream);
+       if(bitmap!=null){v.setImageViewBitmap(R.id.match_photo,roundPhoto(bitmap));v.setViewVisibility(R.id.match_photo,View.VISIBLE);}
+      }catch(Exception ignored){}
       Intent matched=new Intent(c,DialerWidget.class).setAction(ACTION).putExtra(EXTRA_ID,id).putExtra(EXTRA_KEY,"FAV:"+phone);
-      v.setOnClickPendingIntent(R.id.match,PendingIntent.getBroadcast(c,id*100+60,matched,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE));
+      PendingIntent matchTap=PendingIntent.getBroadcast(c,id*100+60,matched,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+      v.setOnClickPendingIntent(R.id.match,matchTap);
+      v.setOnClickPendingIntent(R.id.match_hint,matchTap);
+      v.setOnClickPendingIntent(R.id.match_photo,matchTap);
       break;
      }
     }
@@ -88,15 +118,14 @@ public class DialerWidget extends AppWidgetProvider {
   m.updateAppWidget(id,v);
  }
  @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids){for(int id:ids)render(c,m,id);}
- @Override public void onDeleted(Context c,int[] ids){SharedPreferences.Editor e=prefs(c).edit();for(int id:ids)e.remove("n"+id).remove("copy"+id);e.apply();}
+ @Override public void onDeleted(Context c,int[] ids){SharedPreferences.Editor e=prefs(c).edit();for(int id:ids)e.remove("n"+id);e.apply();}
  @Override public void onReceive(Context c,Intent intent){
   super.onReceive(c,intent);if(!ACTION.equals(intent.getAction()))return;
   int id=intent.getIntExtra(EXTRA_ID,-1);if(id<0)return;
   String key=intent.getStringExtra(EXTRA_KEY);if(key==null)return;
   String n=prefs(c).getString("n"+id,"");
   if(key.startsWith("FAV:")){placeCall(c,key.substring(4));return;}
-  if("SHOW_COPY".equals(key)){prefs(c).edit().putBoolean("copy"+id,!prefs(c).getBoolean("copy"+id,false)).apply();render(c,AppWidgetManager.getInstance(c),id);return;}
-  if("COPY".equals(key)){if(!n.isEmpty()){ClipboardManager clipboard=(ClipboardManager)c.getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard!=null)clipboard.setPrimaryClip(ClipData.newPlainText("Phone number",n));}prefs(c).edit().putBoolean("copy"+id,false).apply();render(c,AppWidgetManager.getInstance(c),id);return;}
+  if("COPY".equals(key)){if(!n.isEmpty()){ClipboardManager clipboard=(ClipboardManager)c.getSystemService(Context.CLIPBOARD_SERVICE);if(clipboard!=null)clipboard.setPrimaryClip(ClipData.newPlainText("Phone number",n));}return;}
   if("ADD".equals(key)){Intent add=new Intent(Intent.ACTION_INSERT,ContactsContract.Contacts.CONTENT_URI);add.putExtra(ContactsContract.Intents.Insert.PHONE,n);add.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);try{c.startActivity(add);}catch(Exception ignored){}return;}
   if("CALL".equals(key)||"CONTACTS".equals(key)){
    Intent open;
@@ -110,6 +139,6 @@ public class DialerWidget extends AppWidgetProvider {
   if("CLEAR".equals(key))n="";
   else if("DEL".equals(key)){if(!n.isEmpty())n=n.substring(0,n.length()-1);}
   else if(n.length()<32)n+=key;
-  prefs(c).edit().putString("n"+id,n).putBoolean("copy"+id,false).apply();render(c,AppWidgetManager.getInstance(c),id);
+  prefs(c).edit().putString("n"+id,n).apply();render(c,AppWidgetManager.getInstance(c),id);
  }
 }
